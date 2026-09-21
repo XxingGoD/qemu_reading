@@ -18,6 +18,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include "exec-i386.h"
+#include <sys/mman.h>
+#include <unistd.h>
 
 //#define DEBUG_EXEC
 #define DEBUG_FLUSH
@@ -212,6 +214,14 @@ static void cpu_x86_dump_state(FILE *f)
 
 void cpu_x86_tblocks_init(void)
 {
+    unsigned long page_size = getpagesize();
+    unsigned long start = (unsigned long)code_gen_buffer & ~(page_size - 1);
+    unsigned long end = ((unsigned long)code_gen_buffer +
+                         sizeof(code_gen_buffer) + page_size - 1) &
+                        ~(page_size - 1);
+
+    mprotect((void *)start, end - start,
+             PROT_READ | PROT_WRITE | PROT_EXEC);
     if (!code_gen_ptr) {
         code_gen_ptr = code_gen_buffer;
     }
