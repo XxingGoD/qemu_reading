@@ -3621,6 +3621,7 @@ int cpu_x86_gen_code(uint8_t *gen_code_buf, int max_code_size,
                      int *gen_code_size_ptr,
                      uint8_t *pc_start,  uint8_t *cs_base, int flags)
 {
+    // 初始化反编译上下文
     DisasContext dc1, *dc = &dc1;
     uint8_t *pc_ptr;
     uint16_t *gen_opc_end;
@@ -3639,13 +3640,17 @@ int cpu_x86_gen_code(uint8_t *gen_code_buf, int max_code_size,
     dc->vm86 = (flags >> GEN_FLAG_VM_SHIFT) & 1;
     dc->cc_op = CC_OP_DYNAMIC;
     dc->cs_base = cs_base;
-
+    // 初始化中间代码缓冲区
+    // gen_opc_buf 存放中间操作码，gen_opparam_buf 存放操作码参数
+    // gen_opc_ptr 指向当前写入位置，gen_opc_end 是缓冲区末尾
     gen_opc_ptr = gen_opc_buf;
     gen_opc_end = gen_opc_buf + OPC_MAX_SIZE;
     gen_opparam_ptr = gen_opparam_buf;
-
+    // dc->is_jmp 标记是否遇到跳转指令，初始为 0
     dc->is_jmp = 0;
+    // pc_ptr 指向当前正在翻译的客户机指令地址
     pc_ptr = pc_start;
+    // 循环反汇编客户机指令
     do {
         ret = disas_insn(dc, pc_ptr);
         if (ret == -1) {
@@ -3660,15 +3665,19 @@ int cpu_x86_gen_code(uint8_t *gen_code_buf, int max_code_size,
         pc_ptr = (void *)ret;
     } while (!dc->is_jmp && gen_opc_ptr < gen_opc_end);
     /* we must store the eflags state if it is not already done */
+    // 处理EFLAGS和PC更新
     if (dc->cc_op != CC_OP_DYNAMIC)
         gen_op_set_cc_op(dc->cc_op);
     if (dc->is_jmp != 1) {
         /* we add an additionnal jmp to update the simulated PC */
+        // 如果不是跳转，则添加一条跳转到下一条指令的中间操作码
         gen_op_jmp_im(ret - (unsigned long)dc->cs_base);
     }
+    // 在操作吗缓冲区末尾写入结束标记
     *gen_opc_ptr = INDEX_op_end;
 
     /* optimize flag computations */
+    // 调试输出
 #ifdef DEBUG_DISAS
     if (loglevel) {
         uint8_t *pc;
@@ -3706,6 +3715,7 @@ int cpu_x86_gen_code(uint8_t *gen_code_buf, int max_code_size,
 #endif
 
     /* optimize flag computations */
+    // 优化标志计算对中间操作码进行优化,
     optimize_flags(gen_opc_buf, gen_opc_ptr - gen_opc_buf);
 
 #ifdef DEBUG_DISAS
@@ -3717,10 +3727,12 @@ int cpu_x86_gen_code(uint8_t *gen_code_buf, int max_code_size,
 #endif
 
     /* generate machine code */
+    // 生成机器码
     gen_code_size = dyngen_code(gen_code_buf, gen_opc_buf, gen_opparam_buf);
     flush_icache_range((unsigned long)gen_code_buf, (unsigned long)(gen_code_buf + gen_code_size));
     *gen_code_size_ptr = gen_code_size;
 
+    // 调试输出
 #ifdef DEBUG_DISAS
     if (loglevel) {
         uint8_t *pc;
@@ -3762,7 +3774,7 @@ CPUX86State *cpu_x86_init(void)
     CPUX86State *env;
     int i;
     static int inited;
-
+    // 初始化x86目标相关的翻译块
     cpu_x86_tblocks_init();
 
     env = malloc(sizeof(CPUX86State));
@@ -3770,13 +3782,16 @@ CPUX86State *cpu_x86_init(void)
         return NULL;
     memset(env, 0, sizeof(CPUX86State));
     /* basic FPU init */
+    // 初始化 x87 FPU
     for(i = 0;i < 8; i++)
         env->fptags[i] = 1;
     env->fpuc = 0x37f;
     /* flags setup : we activate the IRQs by default as in user mode */
+    // 初始化EFLAGS
     env->eflags = 0x2 | IF_MASK;
 
     /* init various static tables */
+    // 一次性初始化标志位优化表
     if (!inited) {
         inited = 1;
         optimize_flags_init();

@@ -686,24 +686,26 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
     status = 0;
     load_addr = 0;
     load_bias = 0;
+    // 读取 ELF Header
     elf_ex = *((struct elfhdr *) bprm->buf);          /* exec-header */
 #ifdef BSWAP_NEEDED
     bswap_ehdr(&elf_ex);
 #endif
-
+    // 检查ELF魔数
     if (elf_ex.e_ident[0] != 0x7f ||
 	strncmp(&elf_ex.e_ident[1], "ELF",3) != 0) {
 	    return  -ENOEXEC;
     }
 
     /* First of all, some simple consistency checks */
+    // 检查ELF类型
     if ((elf_ex.e_type != ET_EXEC && elf_ex.e_type != ET_DYN) ||
        				(! elf_check_arch(elf_ex.e_machine))) {
 	    return -ENOEXEC;
     }
 
     /* Now read in all of the header information */
-
+    // 读取Program Header Table
     elf_phdata = (struct elf_phdr *)malloc(elf_ex.e_phentsize*elf_ex.e_phnum);
     if (elf_phdata == NULL) {
 	return -ENOMEM;
@@ -741,6 +743,7 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
     end_data = 0;
 
     for(i=0;i < elf_ex.e_phnum; i++) {
+	// 寻找动态链接器
 	if (elf_ppnt->p_type == PT_INTERP) {
 	    if ( elf_interpreter != NULL )
 	    {
@@ -787,6 +790,7 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
 	    printf("Using ELF interpreter %s\n", elf_interpreter);
 #endif
 	    if (retval >= 0) {
+		// 打开动态链接器
 		retval = open(path(elf_interpreter), O_RDONLY);
 		if(retval >= 0) {
 		    interpreter_fd = retval;
@@ -878,6 +882,7 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
     /* Do this so that we can load the interpreter, if need be.  We will
        change some of these later */
     info->rss = 0;
+    // 把前面 copy_strings() 的“临时参数页”搬到真正的目标用户栈
     bprm->p = setup_arg_pages(bprm->p, bprm, info);
     info->start_stack = bprm->p;
 
@@ -886,7 +891,7 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
      * the image should be loaded at fixed address, not at a variable
      * address.
      */
-
+    // 遍历PT_LOAD,建立内存映射
     for(i = 0, elf_ppnt = elf_phdata; i < elf_ex.e_phnum; i++, elf_ppnt++) {
         int elf_prot = 0;
         int elf_flags = 0;
@@ -1058,13 +1063,16 @@ static int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * r
 int elf_exec(const char * filename, char ** argv, char ** envp, 
              struct target_pt_regs * regs, struct image_info *infop)
 {
+	// 保存加载一个新程序时的临时加载信息
         struct linux_binprm bprm;
         int retval;
         int i;
-
+	// 保存参数/环境变量临时存储区域中的当前位置
         bprm.p = X86_PAGE_SIZE*MAX_ARG_PAGES-sizeof(unsigned int);
+	// 清空参数页
         for (i=0 ; i<MAX_ARG_PAGES ; i++)       /* clear page-table */
                 bprm.page[i] = 0;
+	// 打开elf执行文件
         retval = open(filename, O_RDONLY);
         if (retval == -1) {
 	    perror(filename);
@@ -1074,6 +1082,7 @@ int elf_exec(const char * filename, char ** argv, char ** envp,
 	else {
 	    bprm.fd = retval;
 	}
+	// 初始化linux_binprm
         bprm.filename = (char *)filename;
         bprm.sh_bang = 0;
         bprm.loader = 0;
@@ -1081,9 +1090,10 @@ int elf_exec(const char * filename, char ** argv, char ** envp,
         bprm.dont_iput = 0;
 	bprm.argc = count(argv);
 	bprm.envc = count(envp);
-
+	// 准备执行文件的基本信息
         retval = prepare_binprm(&bprm);
 
+	// 将执行的文件名，参数个数，以及环境变量拷贝到bprm.p指向的区域
         if(retval>=0) {
 	    bprm.p = copy_strings(1, &bprm.filename, bprm.page, bprm.p);
 	    bprm.exec = bprm.p;
@@ -1093,7 +1103,7 @@ int elf_exec(const char * filename, char ** argv, char ** envp,
 		retval = -E2BIG;
 	    }
         }
-
+	// 加载ELF文件
         if(retval>=0) {
 	    retval = load_elf_binary(&bprm,regs,infop);
 	}
@@ -1105,6 +1115,7 @@ int elf_exec(const char * filename, char ** argv, char ** envp,
 	}
 
         /* Something went wrong, return the inode and free the argument pages*/
+	// 如果出现失败，则释放参数页
         for (i=0 ; i<MAX_ARG_PAGES ; i++) {
 	    free_page((void *)bprm.page[i]);
 	}

@@ -16,23 +16,22 @@
  * task_struct fields in the kernel
  */
 struct image_info {
-	unsigned long	start_code;
-	unsigned long	end_code;
-	unsigned long	end_data;
-	unsigned long	start_brk;
-	unsigned long	brk;
-	unsigned long	start_mmap;
-	unsigned long	mmap;
-	unsigned long	rss;
-	unsigned long	start_stack;
-	unsigned long	arg_start;
-	unsigned long	arg_end;
-	unsigned long	env_start;
-	unsigned long	env_end;
-	unsigned long	entry;
-	int		personality;
+	unsigned long	start_code; // 代码段的开始位置
+	unsigned long	end_code;   // 代码段的结束位置
+	unsigned long	end_data;   // 数据段的结束位置
+	unsigned long	start_brk;  // start_brk的位置
+	unsigned long	brk;	    // brk的位置
+	unsigned long	start_mmap; // 映射的开始位置
+	unsigned long	mmap;	 
+	unsigned long	rss;	    // 程序实际消耗页的数量
+	unsigned long	start_stack;// 栈的开始位置
+	unsigned long	arg_start;  // 传参的开始位置
+	unsigned long	arg_end;    // 传参的结束位置
+	unsigned long	env_start;  // 环境变量的开始位置
+	unsigned long	env_end;    // 环境变量的结束位置
+	unsigned long	entry;	    // 执行代码的入口
+	int		personality;// 描述某些兼容行为/ABI 行为
 };
-
 /* Information about the current linux thread */
 struct vm86_saved_state {
     uint32_t eax; /* return code */

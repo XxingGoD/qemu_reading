@@ -92,6 +92,12 @@ static inline int testandset (int *p)
 #ifdef __s390__
 static inline int testandset (int *p)
 {
+    /***************************
+    输入：指向一个整数的指针 p。
+	行为：原子地执行“测试并设置”：
+	如果 *p == 0，则把 *p 设为 1，并返回 1（表示获取成功）；
+	如果 *p != 0，则不做修改，返回 0（表示已被占用）。
+    ***************************/
     int ret;
 
     __asm__ __volatile__ ("0: cs    %0,%1,0(%2)\n"
@@ -282,6 +288,7 @@ static inline TranslationBlock *tb_alloc(void)
 
 int cpu_x86_exec(CPUX86State *env1)
 {
+    // 保存全局寄存器上下文
     int saved_T0, saved_T1, saved_A0;
     CPUX86State *saved_env;
 #ifdef reg_EAX
@@ -319,6 +326,7 @@ int cpu_x86_exec(CPUX86State *env1)
     saved_T1 = T1;
     saved_A0 = A0;
     saved_env = env;
+    // 切换CPU状态
     env = env1;
 #ifdef reg_EAX
     saved_EAX = EAX;
@@ -354,15 +362,20 @@ int cpu_x86_exec(CPUX86State *env1)
 #endif
     
     /* put eflags in CPU temporary format */
+    // EFLAGS转换
     CC_SRC = env->eflags & (CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
     DF = 1 - (2 * ((env->eflags >> 10) & 1));
     CC_OP = CC_OP_EFLAGS;
     env->eflags &= ~(DF_MASK | CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
+    // 清除中断请求
     env->interrupt_request = 0;
     
     /* prepare setjmp context for exception handling */
+    // 建立异常处理点
     if (setjmp(env->jmp_env) == 0) {
+        // 主执行循环
         for(;;) {
+            // 检查中断请求
             if (env->interrupt_request) {
                 raise_exception(EXCP_INTERRUPT);
             }
@@ -382,9 +395,11 @@ int cpu_x86_exec(CPUX86State *env1)
             flags |= (env->eflags & VM_MASK) >> (17 - GEN_FLAG_VM_SHIFT);
             cs_base = env->seg_cache[R_CS].base;
             pc = cs_base + env->eip;
+            // 查找tb翻译块
             tb = tb_find(&ptb, (unsigned long)pc, (unsigned long)cs_base, 
                          flags);
             if (!tb) {
+                // 如果没有翻译块，则动态生成
                 /* if no translated code available, then translate it now */
                 /* XXX: very inefficient: we lock all the cpus when
                    generating code */
@@ -413,6 +428,7 @@ int cpu_x86_exec(CPUX86State *env1)
             gen_func();
         }
     }
+    // 发生异常，跳出循环，恢复EFLAGS和全局寄存器，返回异常号
     ret = env->exception_index;
 
     /* restore flags in standard format */

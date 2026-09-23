@@ -246,13 +246,17 @@ void cpu_loop(struct CPUX86State *env)
     int trapnr;
     uint8_t *pc;
     target_siginfo_t info;
-
+    // 主循环与执行
     for(;;) {
+        // 执行一段翻译后的客户机代码
         trapnr = cpu_x86_exec(env);
+        // pc指向当前客户机指令地址
         pc = env->seg_cache[R_CS].base + env->eip;
+        // 根据异常类型分发处理
         switch(trapnr) {
-        case EXCP0D_GPF:
+        case EXCP0D_GPF: 
             if (env->eflags & VM_MASK) {
+            // VM86模式
 #ifdef DEBUG_VM86
                 printf("VM86 exception %04x:%08x %02x %02x\n",
                        env->segs[R_CS], env->eip, pc[0], pc[1]);
@@ -261,6 +265,7 @@ void cpu_loop(struct CPUX86State *env)
                 switch(pc[0]) {
                 case 0xcd: /* int */
                     env->eip += 2;
+                    // 模拟中断
                     do_int(env, pc[1]);
                     break;
                 case 0x66:
@@ -269,6 +274,7 @@ void cpu_loop(struct CPUX86State *env)
                     case 0x9d: /* popf */
                     case 0xcf: /* iret */
                         env->eip += 2;
+                        // 在VM86下会触发GPF，返回32位模式
                         return_to_32bit(env, TARGET_VM86_STI);
                         break;
                     default:
@@ -288,6 +294,7 @@ void cpu_loop(struct CPUX86State *env)
                     break;
                 }
             } else {
+                // 非VM86模式,如果是系统调用指令则模拟系统调用
                 if (pc[0] == 0xcd && pc[1] == 0x80) {
                     /* syscall */
                     env->eip += 2;
@@ -300,6 +307,7 @@ void cpu_loop(struct CPUX86State *env)
                                                   env->regs[R_EDI],
                                                   env->regs[R_EBP]);
                 } else {
+                    // 如果不是系统调用指令，则非法访问
                     /* XXX: more precise info */
                     info.si_signo = SIGSEGV;
                     info.si_errno = 0;
@@ -310,6 +318,7 @@ void cpu_loop(struct CPUX86State *env)
             }
             break;
         case EXCP00_DIVZ:
+            // 除零异常
             if (env->eflags & VM_MASK) {
                 do_int(env, trapnr);
             } else {
@@ -323,6 +332,7 @@ void cpu_loop(struct CPUX86State *env)
             break;
         case EXCP04_INTO:
         case EXCP05_BOUND:
+            // 溢出与边界异常
             if (env->eflags & VM_MASK) {
                 do_int(env, trapnr);
             } else {
@@ -334,6 +344,7 @@ void cpu_loop(struct CPUX86State *env)
             }
             break;
         case EXCP06_ILLOP:
+            // 非法操作码
             info.si_signo = SIGILL;
             info.si_errno = 0;
             info.si_code = TARGET_ILL_ILLOPN;
@@ -341,13 +352,16 @@ void cpu_loop(struct CPUX86State *env)
             queue_signal(info.si_signo, &info);
             break;
         case EXCP_INTERRUPT:
+            // 中断
             /* just indicate that signals should be handled asap */
             break;
         default:
+            // 未处理异常
             fprintf(stderr, "qemu: 0x%08lx: unhandled CPU exception 0x%x - aborting\n", 
                     (long)pc, trapnr);
             abort();
         }
+        // 处理挂起信号
         process_pending_signals(env);
     }
 }
@@ -375,14 +389,19 @@ TaskState *first_task_state;
 
 int main(int argc, char **argv)
 {
+    // 执行程序文件名
     const char *filename;
+    // 目标程序启动时的寄存器状态
     struct target_pt_regs regs1, *regs = &regs1;
+    // 目标ELF的内存布局信息
     struct image_info info1, *info = &info1;
+    // 模拟linux task/process状态
     TaskState ts1, *ts = &ts1;
+    // x86CPU模拟状态
     CPUX86State *env;
     int optind;
     const char *r;
-    
+    // 提供可执行程序，不然打印usage 
     if (argc <= 1)
         usage();
 
@@ -398,8 +417,10 @@ int main(int argc, char **argv)
         r++;
         if (!strcmp(r, "-")) {
             break;
+        // 开启debug
         } else if (!strcmp(r, "d")) {
             loglevel = 1;
+        // 设置用户栈大小
         } else if (!strcmp(r, "s")) {
             r = argv[optind++];
             x86_stack_size = strtol(r, (char **)&r, 0);
@@ -409,6 +430,7 @@ int main(int argc, char **argv)
                 x86_stack_size *= 1024 * 1024;
             else if (*r == 'k' || *r == 'K')
                 x86_stack_size *= 1024;
+        // 指定目标程序依赖的ELF interpreter / 动态库路径
         } else if (!strcmp(r, "L")) {
             interp_prefix = argv[optind++];
         } else {
@@ -420,6 +442,7 @@ int main(int argc, char **argv)
     filename = argv[optind];
 
     /* init debug */
+    // 打开日志文件
     if (loglevel) {
         logfile = fopen(DEBUG_LOGFILE, "w");
         if (!logfile) {
@@ -430,14 +453,17 @@ int main(int argc, char **argv)
     }
 
     /* Zero out regs */
+    // 清空进程寄存器
     memset(regs, 0, sizeof(struct target_pt_regs));
 
     /* Zero out image_info */
+    // 清空elf空间信息
     memset(info, 0, sizeof(struct image_info));
 
     /* Scan interp_prefix dir for replacement files. */
+    // 初始化ELF interpreter / 动态库路径前缀
     init_paths(interp_prefix);
-
+    // 处理目标可执行程序的信息
     if (elf_exec(filename, argv+optind, environ, regs, info) != 0) {
 	printf("Error loading %s\n", filename);
 	_exit(1);
@@ -453,12 +479,15 @@ int main(int argc, char **argv)
         fprintf(logfile, "esp         0x%08lx\n" , regs->esp);
         fprintf(logfile, "eip         0x%08lx\n" , regs->eip);
     }
-
+    // 设置brk
     target_set_brk((char *)info->brk);
+    // syscall初始化
     syscall_init();
+    // signal初始化
     signal_init();
-
+    // 创建cpu
     env = cpu_x86_init();
+    // 保存一个全局cpu指针
     global_env = env;
 
     /* build Task State */
@@ -467,6 +496,7 @@ int main(int argc, char **argv)
     ts->used = 1;
     
     /* linux register setup */
+    // 寄存器状态迁移
     env->regs[R_EAX] = regs->eax;
     env->regs[R_EBX] = regs->ebx;
     env->regs[R_ECX] = regs->ecx;
@@ -478,17 +508,21 @@ int main(int argc, char **argv)
     env->eip = regs->eip;
 
     /* linux segment setup */
+    // GDT初始化
     env->gdt.base = (void *)gdt_table;
     env->gdt.limit = sizeof(gdt_table) - 1;
+    // 建立用户态CS，DS描述符
+    // >>3是获取GDTindex
     write_dt(&gdt_table[__USER_CS >> 3], 0, 0xffffffff, 1);
     write_dt(&gdt_table[__USER_DS >> 3], 0, 0xffffffff, 1);
+    // 加载 CS / DS / SS
     cpu_x86_load_seg(env, R_CS, __USER_CS);
     cpu_x86_load_seg(env, R_DS, __USER_DS);
     cpu_x86_load_seg(env, R_ES, __USER_DS);
     cpu_x86_load_seg(env, R_SS, __USER_DS);
     cpu_x86_load_seg(env, R_FS, __USER_DS);
     cpu_x86_load_seg(env, R_GS, __USER_DS);
-
+    // 执行目标程序
     cpu_loop(env);
     /* never exits */
     return 0;

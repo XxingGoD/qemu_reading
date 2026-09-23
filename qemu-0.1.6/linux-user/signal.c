@@ -162,15 +162,16 @@ void signal_init(void)
 
     /* set all host signal handlers. ALL signals are blocked during
        the handlers to serialize them. */
+    // 注册所有的信号处理函数
     sigfillset(&act.sa_mask);
     act.sa_flags = SA_SIGINFO;
     act.sa_sigaction = host_signal_handler;
     for(i = 1; i < NSIG; i++) {
 	sigaction(i, &act, NULL);
     }
-    
+    // 清空信号动作表 
     memset(sigact_table, 0, sizeof(sigact_table));
-
+    // 初始化信号队列空闲链表
     first_free = &sigqueue_table[0];
     for(i = 0; i < MAX_SIGQUEUE_SIZE - 1; i++) 
         sigqueue_table[i].next = &sigqueue_table[i + 1];
